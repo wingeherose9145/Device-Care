@@ -161,7 +161,7 @@ class PlayerActivity : AppCompatActivity() {
     private fun setupSeekBar() {
         handler.post(object : Runnable {
             override fun run() {
-                // 4. 顺滑核心：只有在进度条可见（View.VISIBLE）时才刷新 UI，旋转屏幕时由于其已被隐藏，不会造成阻塞
+                // 只有在进度条可见时才刷新 UI，释放主线程算力
                 if (player.duration > 0 && seekBar.visibility == View.VISIBLE) {
                     seekBar.max = player.duration.toInt()
                     seekBar.progress = player.currentPosition.toInt()
@@ -171,7 +171,8 @@ class PlayerActivity : AppCompatActivity() {
         })
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun rangeChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+            // 【已修复】这里必须是 onProgressChanged，不能是 rangeChanged
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) player.seekTo(progress.toLong())
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
