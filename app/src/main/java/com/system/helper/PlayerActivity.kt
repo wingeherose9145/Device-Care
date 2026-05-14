@@ -17,7 +17,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import kotlin.random.Random
 
 class PlayerActivity : AppCompatActivity() {
 
@@ -34,9 +33,15 @@ class PlayerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 全屏与防截屏设置
-        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
+        )
+
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
 
         setContentView(R.layout.activity_player)
 
@@ -56,9 +61,6 @@ class PlayerActivity : AppCompatActivity() {
             return
         }
 
-        // 1. 继承文件一：支持自动随机打乱与初始化选择
-        shuffleAndRandomStart()
-
         setupGestureDetector()
         setupSeekBar()
 
@@ -72,7 +74,7 @@ class PlayerActivity : AppCompatActivity() {
 
         playCurrentVideo()
 
-        // 2. 关键优化：点击屏幕时，播放则隐藏进度条（释放主线程），暂停则显示进度条
+        // 【优化点 1】参考文件一：点击屏幕，播放时隐藏进度条，暂停时显示进度条
         playerView.setOnClickListener {
             if (player.isPlaying) {
                 player.pause()
@@ -84,29 +86,23 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    private fun shuffleAndRandomStart() {
-        if (videoUris.size <= 1) return
-        videoUris.shuffle(Random.Default)
-        currentIndex = Random.nextInt(videoUris.size)
-    }
-
     private fun playCurrentVideo() {
         try {
             val uri = Uri.parse(videoUris[currentIndex])
-            
-            // 顺滑核心：在视频加载前强制更改Activity方向，让窗口提早适应尺寸
+
             setVideoOrientation(uri)
 
             player.stop()
             player.setMediaItem(MediaItem.fromUri(uri))
             player.prepare()
             player.play()
-            
-            // 默认播放时隐藏进度条，腾出主线程算力
+
+            // 【优化点 3 补充】开始播放新视频时，默认隐藏进度条，确保切屏时不抢占主线程算力
             seekBar.visibility = View.GONE
+
         } catch (e: Exception) {
             Toast.makeText(this, "播放失败", Toast.LENGTH_SHORT).show()
-            playNextVideo()
+            playNextVideo() // 如果播放失败自动尝试下一首
         }
     }
 
@@ -130,13 +126,15 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    // 3. 继承文件一：无限循环链表逻辑
+    // 【优化点 2】参考文件一：修改为“取模算法”，实现无限循环滑动切换（不再在首尾卡死）
     private fun playNextVideo() {
+        if (videoUris.isEmpty()) return
         currentIndex = (currentIndex + 1) % videoUris.size
         playCurrentVideo()
     }
 
     private fun playPreviousVideo() {
+        if (videoUris.isEmpty()) return
         currentIndex = if (currentIndex > 0) currentIndex - 1 else videoUris.size - 1
         playCurrentVideo()
     }
@@ -161,7 +159,8 @@ class PlayerActivity : AppCompatActivity() {
     private fun setupSeekBar() {
         handler.post(object : Runnable {
             override fun run() {
-                // 只有在进度条可见时才刷新 UI，释放主线程算力
+                // 【优化点 3】参考文件一：增加 && seekBar.visibility == View.VISIBLE 判断
+                // 只有在进度条可见时才允许刷新 UI。横竖屏切换时进度条是隐藏的，此时完全不占主线程算力，过渡极度顺滑
                 if (player.duration > 0 && seekBar.visibility == View.VISIBLE) {
                     seekBar.max = player.duration.toInt()
                     seekBar.progress = player.currentPosition.toInt()
@@ -171,9 +170,10 @@ class PlayerActivity : AppCompatActivity() {
         })
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            // 【已修复】这里必须是 onProgressChanged，不能是 rangeChanged
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) player.seekTo(progress.toLong())
+                if (fromUser) {
+                    player.seekTo(progress.toLong())
+                }
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
